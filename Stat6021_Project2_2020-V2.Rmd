@@ -469,7 +469,7 @@ And we notice that the simple scatter plot of charges against age has three dist
 plot(data$age, data$charges)
 ```
 
-Suppose we remove age from the model and perform transformation on response variable, we do not see any violations of linear regression assumptions.
+Suppose we remove age from the model and perform transformation on response variable. The bob-cox plot suggests non-constant variance, however when we carefully inspect the residual plot we still non-linearity and suspect non-constant variance is not addressed completely.
 
 ```{r}
 without.age <- lm(charges^.35 ~ + children + smoker + sex + region + bmi, data=data)
