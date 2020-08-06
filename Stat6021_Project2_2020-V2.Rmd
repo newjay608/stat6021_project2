@@ -1,0 +1,588 @@
+---
+title: |
+  | \vspace{7cm} STAT 6021: Project Two
+subtitle: "Medical Insurnace Costs"
+author: "Niraja Bhidar(nd4dg), Derek Banks(dmb3ey), Jay Hombal (mh4ey), Ronak Rijhwani (rr7wq)"
+output:
+  pdf_document:
+    fig_height: 5
+    fig_width: 6
+  html_document:
+    df_print: paged
+  html_notebook:
+    fig_height: 5
+    fig_width: 6
+---
+
+\pagenumbering{gobble}
+\centering
+\raggedright
+\clearpage
+\pagenumbering{arabic}
+
+```{r setup, include=FALSE, message=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE, comment='')
+```
+
+```{r,include=FALSE}
+##Bring in all needed packages
+library(leaps)
+library(MASS)
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+library(grid)
+library(gridExtra)
+library(psych)
+library(magrittr)
+library(car)
+library(broom)
+library(ROCR)
+```
+
+```{r, include=FALSE}
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plot list (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+```
+
+## 1 Executive Summary :
+
+The growing issue of higher medical costs per family has become a big concern to Americans. Increasing healthcare costs stop people from getting the needed care or fill prescriptions. Many families have difficulty in affording healthcare costs and this difficulty in paying bills has significant consequences for US families.  
+
+We selected a personal medical costs dataset. We want to explore what demographic characteristics affect the medical charges each family potentially pays in a year. So, we have considered Medical Cost Personal Dataset.    
+
+#### Dataset: datasets_13720_18513_insurance.csv
+
+* The variables are as follows
+  + **Predictors**
+    - **x1**:	**age**: age of primary beneficiary.
+    - **x2**: **sex**: insurance contractor gender, female, male.
+    - **x3**:	**bmi**: Body mass index, providing an understanding of body, weights that are relatively high or low relative to height, objective index of body weight (kg / m ^ 2) using the ratio of height to weight, ideally 18.5 to 24.9.
+    - **x4**: **children**: Number of children covered by health insurance / Number of dependents.
+    - **x5**: **smoker**: Smoking
+    - **x6**:	**region**: the beneficiary's residential area in the US, northeast, southeast, southwest, northwest.
+  + **Response Variable**
+    - **Y**: **charges**: Individual medical costs billed by health insurance.
+
+
+* **The main objectives for this project are –**  
+  1. Explore relationship between response variable **charges** & the six other predictor variables (x1–x6).  
+  2. Analyze the correlation and directionality of the dataset.  
+  3. Create a model a best fit model to predict the insurance **charges** based the demographic predictor variables and evaluate the validity and usefulness of this model.  
+  
+  Additionally, we plan to utilize model selection tools to give us a deeper understanding of how different potential models compare. We want to recommend a best fit model and end our section by exploring the pros and cons of our models under consideration.  
+
+## 2 Exploratory Data Analysis :
+
+We start our exploratory data analysis by taking a look at the dataset.
+
+```{r echo=TRUE}
+data <- read.csv("datasets_13720_18513_insurance.csv", header = TRUE, sep =",", 
+                 stringsAsFactors = TRUE)
+head(data)
+```
+
+
+Our dataset looks clean and has no missing values.
+
+```{r include=FALSE}
+unique(sapply(data, is.na))
+```
+
+At a glance, we have six predictors and a response variable **charges**. The dataset has 1338 rows, and non of the columns are missing values.
+
+```{r echo=FALSE}
+str(data)
+```
+
+Inspecting the data types of variables, we see that the predictor variables sex, smoker, and region. These categorical variables are automatically converted as factor by R when loading the dataset because we used the option **stringsAsFactors = TRUE** while reading the csv file  
+
+```{r echo=FALSE}
+summary(data)
+summary(data$charges)
+```
+
+* From the summary we can make following observations :
+
+  - The observations(records) are almost evenly distributed across region.
+  - The age varies between low of 18 and a max of 64.
+  - The observations are almost evenly distributed by sex.
+  - The dataset has almost 4:1 non-smoker to smoker ratio or only 20.5% people smoke.
+  - The bmi varies between  a min of 15.96 and max of 53.13.
+  
+* The response variable mean is greater than median, this is an indication that data is right-skewed. This can be confirmed from the histogram we can confirm this from the histogram of **charges** shown below. The predictor age also seems to right skewed
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+hg1 <- ggplot(data=data, aes(data$charges)) +
+  geom_histogram(colour = "darkblue", fill = "lightblue" ) +
+  ggtitle("Histogram for Charges") +
+  theme_classic() +  
+  xlab("Charges") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+multiplot(hg1, cols=2)
+
+```
+
+Form the boxplot shown below for medical **charges** by **sex** the median value of the medical **charges** for both male and female is almost the same. the third quartile for male seems to greater than female, so the data may be skewed towards the men.
+
+And, the boxplot of medical **charges** by **children**, we can make an interesting observation that the medical **charges** for people with 5 children are lower than people with one to four children and people with no children have the lowest medical charges 
+
+```{r echo=FALSE, fig.height=5, fig.width=10, message=FALSE, warning=FALSE}
+
+g1 <- ggplot(data = data, aes(sex,charges)) + 
+  geom_boxplot(fill = c(2:3)) +
+  theme_classic() +  
+  xlab("sex") +
+  ggtitle("Boxplot of Medical Charges by Gender") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+g2 <- ggplot(data = data,aes(as.factor(children),charges)) + 
+  geom_boxplot(fill = c(2:7)) +
+  theme_classic() +  
+  xlab("children") +
+  ggtitle("Boxplot of Medical Charges by Number of Children") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+g3 <- ggplot(data = data,aes(region,charges)) + 
+  geom_boxplot(fill = c(2:5)) +
+  theme_classic() +
+  xlab("US Region") +
+  ggtitle("Boxplot of Medical Charges per Region") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+g4 <- ggplot(data = data, aes(smoker,charges)) + 
+  geom_boxplot(fill = c(2:3)) +
+  xlab("Smoking Staus") +
+  theme_classic() + ggtitle("Boxplot of Medical Charges by Smoking Status") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+multiplot(g1, g2, cols=2)
+
+```
+  
+Form the boxplot of medical **charges** per **region** the median value of the medical **charges** across all four US regions is almost the same. The people in the southeast seem to have higher medical expenses then the people in the other areas. 
+
+However, exploring the boxplot of medical **charges** by **smoking** status, we see that the medical **charges** for those who smoke are much higher than those who do not smoke.  
+
+```{r echo=FALSE, fig.height=6, fig.width=10, message=FALSE, warning=FALSE}
+multiplot(g3, g4, cols=2)
+```
+
+```{r echo=FALSE, warning=FALSE}
+plt <- ggplot(data=data, aes(x=age,y=charges, color=smoker, shape=smoker)) +
+  geom_point(size=1) +
+  geom_smooth(method="lm", aes(fill=smoker)) +
+  xlab("children") +
+  ggtitle("Scatterplot of Medical Charges against Age by Smoker") +
+  theme(plot.title = element_text(hjust = 0.5))
+plt + facet_wrap(~smoker)
+```
+From the above scatter plot, we observe that medical charges increase with age for both smokers and non-smokers. However, those who smoke tend to have higher medical expenses than those who do not.
+
+```{r echo=FALSE, fig.height=6, fig.width=6, message=FALSE, warning=FALSE}
+#create a scatter plot matrix of all our quantitative variables
+cor(data[c("charges", "age", "bmi", "children")])
+pairs.panels(data [ c("charges", "age", "bmi", "children") ])
+``` 
+
+   and the plot.For example, we observe **somewhat(moderate)** correlated between **age** and **charges**, and **bmi**  and **charges** and However, **bmi** and **age** and **children** and **charges**. have a weak correlation. We will further explore these relationships as we continue our analysis towards building a final module.  
+
+As we observed from the summary of the dataset, we can see that **smoker** status (class) has better correlation to **charges** the compared with **non-smoker** status (class). This could also mean that smokers have more medical expenses than non-smokers.   
+
+From our exploratory analysis more than one predictor can be considered for our initial model. We observed that **age** has somewhat better correlation with **charges** and **smokers** tend to have more medical expenses than **non-smokers**  
+
+And in our computation analysis we saw that different classes sex and region categorical variables also indicated to the predictors that we could consider. So to start of we will consider all predictors.  
+
+
+#### Computational Exploration
+
+We will explore candidate models applying model automatic predictor search procedures.
+We will use the R^2^~adj~ and the BIC metrics to identify likely models since these both penalize for adding more terms.
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#take a look at all the first-order subset regression models
+allreg <-regsubsets(data$charges~., data=data, nbest=10)
+
+##create a "data frame" that stores the predictors in the various models considered as well as their various criteria
+
+best <- as.data.frame(summary(allreg)$outmat)
+best$p <- as.numeric(substr(rownames(best),1,1))+1
+best$r2 <- summary(allreg)$rsq
+best$adjr2 <- summary(allreg)$adjr2
+best$mse <- (summary(allreg)$rss)/(dim(data)[1]-best$p)
+best$cp <- summary(allreg)$cp
+best$bic <- summary(allreg)$bic
+
+```
+
+* Based on our analysis -
+  + The model with lowest BIC is: **chareges** = B~0~ + B~1~(age) + B~2~(bmi) + B~3~(children) + B~4~(somkeyes)
+  + The model with highest adjusted R^2^ is **chareges** = B~0~ + B~1~(age) + B~2~(bmi) + B~3~(children) + B~4~(somkeyes) + B~5~(regionsoutheast) + B~6~(regionsouthwest)
+
+```{r include=FALSE}
+best %>% top_n(-1, bic)
+```
+ 
+
+```{r include=FALSE}
+best %>% top_n(1, adjr2)
+```
+
+We also considered the models with the highest R^2^, lowest Cp, and lowest MSE values. The best Cp and best MSE are both on the the same model as the best adjusted R^2^.
+
+```{r include=FALSE}
+best %>% top_n(-1, cp)
+```
+```{r include=FALSE}
+best %>% top_n(-1, mse)
+```
+
+The model with the best R^2^ value has all predictors as adjusted R^2^ inadditon to regionnorthwest
+
+```{r include=FALSE}
+best %>% top_n(1, r2)
+```
+
+From the above, we see that our model with the lowest BIC (-1817.233) is the simple regression of **age,  bmi30, children, smokeyes** against **charges** . The model with the highest adjusted R^2^ is **age, bmi,children,smokeyes,regionsoutheast, and regionsouthwest** against medical **charges**.
+
+## 3. Initial Model Considered:
+
+Based on results from the model search procedures, we ill choose a
+
+```{r echo=TRUE}
+initalmodel <- lm(charges ~ age + bmi + children + smoker + region +sex, data=data)
+summary(initalmodel)
+```
+Validating linear regression assumptions:
+
+
+```{r echo=FALSE, fig.height=9, fig.width=10, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+
+residualPlot(initalmodel, type = "rstandard")
+abline(h=0, col="orange")
+
+boxcox(initalmodel, main = "Box-Cox")
+
+##ACF plot of residuals
+acf(initalmodel$residuals, main="ACF of Residuals")
+
+##Normal probability or QQ plot of residuals
+qqnorm(initalmodel$residuals, col='blue')
+qqline(initalmodel$residuals, col="orange")
+```
+
+Looking at the above plots, we observe that 1. variance is not constant as seen in the box-cox plot and 2. non-linearity as seen in residual plot. We will fix address the constant variance the issue of non-constant variance.
+
+
+In order to fix non-constant variance and non-linearity issues we will transform y first and the then predictors
+
+In our hypothesis, we said that, old age people, people who smoke and people with high bmi (bmi>30) may be at high risk and so their medical costs may be higher, based on that hypothesis and considering that our initial model suffers from non-linearity and non-constant variance issue. We will transform both response variable and predictors
+
+Following transformations will be applied
+  1. Transform **charges** (y) to fix non-constant variance
+  2. Transform age - by adding a non-linear term for age
+  3. Create a indicator variable for bmi (obesity indicator)
+  4. Specify and interaction between smokers and bmi indicator predictor
+
+```{r echo=FALSE}
+data$age2 <- data$age^2
+
+#The **bmi** above 30 is an indicator of obesity, so we create a new indicator variable bmi30 is 1 if it is at least 30 or 0 if less.
+
+if (is.factor(data$bmi) != TRUE)
+  {
+    data$bmi30 <- ifelse(data$bmi >= 30, 1, 0)
+    data$bmi30 <-factor(data$bmi30)
+  }
+is.factor(data$bmi30)
+transformed.model <- lm(charges^0.15 ~ age + age2 + children + bmi + sex + bmi30 * smoker + region , data=data)
+summary(transformed.model)
+```
+
+Multiple R^2^ and Adjusted R^2^ measure how well our model explains the response variable. The transformed model has improved Multiple R^2^ and Adjusted R^2^ compared to initial model.
+
+```{r echo=FALSE, fig.height=6, fig.width=6, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+
+#plot(initalmodel.y$fitted.values,initalmodel.y$residuals, main="Residual Plot", col='blue')
+#abline(h=0, col="orange")
+residualPlot(transformed.model, type = "rstandard")
+
+boxcox.lambda <- boxcox(transformed.model, main = "Box-Cox", col='blue',lambda=seq(-1,4, by=0.1))
+
+##ACF plot of residuals
+acf(transformed.model$residuals, main="ACF of Residuals", col='blue')
+
+##Normal probability or QQ plot of residuals
+qqnorm(transformed.model$residuals, col='blue')
+qqline(transformed.model$residuals, col="orange")
+```
+
+
+While bob-cox plot now shows that non-constant variance issue is addressed, but from the residual plot it is not clear have solved the non-constant and non-linearity issue, we can further explore which predictors can be removed by creating partial regression plots
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+#parital regression plot for bmi
+result.y.bmi <- lm(charges^0.15 ~ age + children + smoker  + region, data=data)
+res.y.bmi <- result.y.bmi$residuals
+result.bmi <- lm(bmi~ age + children + smoker  + region, data=data)
+res.bmi <- result.bmi$residuals
+plot(res.bmi,res.y.bmi, main="parital regression plot of bmi")
+abline(h=0)
+abline(lm(res.y.bmi~res.bmi),col="red")
+
+#parital regression plot for children
+result.y.children <- lm(charges^0.15 ~ age  + smoker  + region, data=data)
+res.y.children <- result.y.children$residuals
+result.children <- lm(children~ age  + smoker  + region, data=data)
+res.children <- result.children$residuals
+plot(res.children,res.y.children, main="parital regression plot of children")
+abline(h=0)
+abline(lm(res.y.children~res.children),col="red")
+
+#parital regression plot for age
+result.y.age <- lm(charges ~ children  + smoker  + region + bmi, data=data)
+res.y.age <- result.y.age$residuals
+result.age <- lm(age ~ children  + smoker  + region +bmi, data=data)
+res.age <- result.age$residuals
+plot(res.age,res.y.age, main="parital regression plot of age")
+abline(h=0)
+abline(lm(res.y.age~res.age), col="red")
+
+```
+From the above partial regression plot, we see a leaner pattern for all three quantiative variables, this means the linear terms for the predictors **bmi**, **age** and **children** is appropriate.
+
+
+```{r echo=FALSE, fig.height=9, fig.width=10, message=FALSE, warning=FALSE}
+str(data)
+full.sqrt.age2 <- lm(charges ^ .15 ~ log(age) + children + log(bmi) + smoker + region, data=data)
+summary(full.sqrt.age2)
+
+par(mfrow=c(2,2))
+
+plot(full.sqrt.age2$fitted.values,full.sqrt.age2$residuals, main="Residual Plot", col='blue')
+abline(h=0, col="orange")
+
+boxcox.lambda <- boxcox(full.sqrt.age2, main = "Box-Cox", col='blue',lambda=seq(-1,4, by=0.1))
+
+##ACF plot of residuals
+acf(full.sqrt.age2$residuals, main="ACF of Residuals", col='blue')
+
+##Normal probability or QQ plot of residuals
+qqnorm(full.sqrt.age2$residuals, col='blue')
+qqline(full.sqrt.age2$residuals, col="orange")
+
+```
+
+```{r echo=FALSE, fig.height=6}
+##residuals
+result <- full.sqrt.age2 
+res<-result$residuals 
+
+##studentized residuals
+student.res<-rstandard(result) 
+
+##externally studentized residuals
+ext.student.res<-rstudent(result) 
+
+n = nrow(swiss)
+
+# 3 predictors and intercept
+p = 5 + 1
+
+##critical value using Bonferroni procedure
+qt(1-0.05/(2*n), n-p-1)
+
+par(mfrow=c(2,2))
+plot(result$fitted.values,res,main="Residuals")
+plot(result$fitted.values,student.res,main="Studentized Residuals")
+plot(result$fitted.values,ext.student.res,main="Externally  Studentized Residuals")
+plot(ext.student.res,main="Externally Studentized Residuals", ylim=c(-4,4))
+abline(h=qt(1-0.05/(2*n), n-p-1), col="red")
+abline(h=-qt(1-0.05/(2*n), n-p-1), col="red")
+
+#sort(ext.student.res)
+ext.student.res[abs(ext.student.res)>qt(1-0.05/(2*n), n-p-1)]
+```
+
+Even after applying transformations, the model fit is still not satisfying linear regression assumptions. We still see the presence of non-linearity and non-constant variance. It may be due to outliers in the data. This model is good enough to explore the relationship between the predictors and the response variable. However, the predicted values may be unrealistic.
+
+## 4. Alternate Model Considered:
+
+In the EDA section, we observed that our response variable is right-skewed. From the validation of the initial-model assumptions, we acknowledged that our initial model could be used to explore the relationship between response and predictor variables. However, predictions may not be accurate.
+
+So we will consider a logistic regression by converting the response variable into a categorical variable. 
+
+Our goal now is to answer the question -  
+### 3. find the best fit model that can predict if the medical charges are greater than or less than/equal $20000?  
+
+converting the response variable to categorical variable and splitting the data into training & testing dataset
+
+we will first use the training dataset to fit the model.
+```{r include=FALSE}
+if (is.factor(data$bmi) != TRUE)
+{
+    lrdata <- mutate(data, lrcharges = if_else(charges <= 20000, 0, 1))
+    lrdata$lrcharges <-factor(lrdata$lrcharges)
+}
+is.factor(lrdata$logit_charges)
+
+
+str(lrdata)
+set.seed(199)
+n_train <- floor(0.5 * nrow(lrdata))
+train_indices <- sample(1:nrow(lrdata), n_train, replace=F)
+lrdata_train <- lrdata[train_indices, ]
+lrdata_test <- lrdata[-train_indices, ]
+
+```
+
+
+```{r}
+lrmodel1<-glm(lrcharges ~ age + bmi + smoker + region + sex + children , family="binomial" , data = lrdata_train)
+summary(lrmodel1)
+```
+
+The higher the difference between null deviance and residual deviance, the better the model's predictability. Our data supports the claim that our logistic regression model is useful in estimating the log odds of whether medical **charges** are greater or less than $20000
+
+The model summary shows, based Z-value (Wald test) age, bmi, and smoker are significant predictors with p-value of less than 0.05. Furthermore, the region sex and children predictors seem insignificant, hence removing the model.
+
+hypothesis-testing  H~0~: coefficients for all predictors is = 0 and   
+                    H~1~: at least one coefficient is not zero
+                    
+```{r}
+1-pchisq(lrmodel1$null.deviance - lrmodel1$deviance,8)
+```
+
+small p-value we reject the null hypothesis that at least one of these coefficients is not zero.  
+
+```{r}
+lrmodel2 <-glm(lrcharges ~ age + bmi  + smoker, family="binomial" , data = lrdata_train)
+summary(lrmodel2)
+```
+
+We already know from the Wald test that the region sex and children predictors are insignificant, so we will conduct the delta G^2^ test to see if these predictors can be removed from the model.
+
+
+```{r}
+#test if additional predictors have coefficients equal to 0
+1-pchisq(lrmodel2$deviance - lrmodel1$deviance,5)
+```
+
+p-value is 0.0941 greater than 0.05, so we cannot reject the null so that we will choose the simpler model with just the three predictors **age**, **bmi** and **smoker**.  
+
+### Logistic Regression model validation  
+
+Next, we will go over how well-chosen logistic regression model does in predicting an outcome that medical **charges** are greater than or less than $20000 given the values of other predictors, using the probability of the observations in the test data of being in each class, we will choose a threshold of 0.5 for the confusion matrix.  
+
+```{r include=FALSE}
+predsr2<- predict(lrmodel2,newdata=lrdata_test, type='response')
+ratesr2 <- prediction(predsr2, lrdata_test$lrcharges)
+roc_resultr2 <- performance(ratesr2, measure = 'tpr', x.measure = 'fpr')
+plot(roc_resultr2)
+lines(x=c(0,1), y=c(0,1), col="red")
+aucr2 <- performance(ratesr2, measure = 'auc')
+aucr2@y.values
+lrdata_test$lrchareges
+table(lrdata_test$lrcharges, predsr2>0.5)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+FP = 33
+TP = 110
+TN = 495
+FN = 31
+overallerror = (FP+FN/(FP+FN+TP+TN))
+overallerror
+FPR = (FP/ (TN+FP))
+FPR
+FNR = (FN/(FN+TP))
+FNR
+sensitivity = 1- FNR
+sensitivity
+sepecifity= 1- FPR
+sepecifity
+```
+
+
+False Positive Rate: When it's actually no, how often does it predict yes  = 0.0625
+
+False Negative Rate: When it's actually Yes, how often does it predict yes = 0.2198582  
+
+Sensitivity  out of all the positive classes, how much we have predicted correctly = 0.7801418
+
+Specificity determines the proportion of actual negatives that are correctly identified = 0.9375
+
+
+The AUC value for our model is 0.8999704. The AUC value is higher than 0.5, which means the model does better than random guessing the classifying observations.
+
+## 5. Conclusion:
+
+
+1. Even after applying transformations, the model fit is still not satisfying linear regression assumptions.
+
+2. We still see non-linearity, and non-constant variance issues are still not addressed in the model.
+
+3. It could be due to skewed data or outliers in the dataset.
+
+4. So we conclude that our initial transformed model is useful for exploring the relationship between predictor and response variables. However, the predicted values will be unreliable.
+
+5. The alternate logistic regression model has the better predictability
+
+
+Our team recommendation:
+
+#### The logistic regression model has better predictability.
+
+
